@@ -11,21 +11,6 @@ license: Apache-2.0
 ## Overview
 This skill enables comprehensive interaction with the Notion API, allowing nanobot to manage databases, pages, and content within your Notion workspace. It supports listing databases, querying entries, creating new pages, and updating existing content.
 
-## Prerequisites
-
-### 1. Configuration
-The skill reads the API key from `~/.nanobot/config.json` (nanobot's standard config location):
-
-```json
-{
-  "tools": {
-    "notion": {
-      "apiKey": "secret_YOUR_API_KEY_HERE"
-    }
-  }
-}
-```
-
 ## Supported Operations
 
 ### 1. List All Databases
@@ -385,10 +370,3 @@ def get_all_results(endpoint, api_key):
 8. **Handle null values** gracefully in properties
 
 ---
-
-
-## API Version Notes
-
-This skill uses Notion API version **2022-06-28**. Always include the `Notion-Version` header in requests.
-
-For latest API changes, see: https://developers.notion.com/reference/changes-by-version
