@@ -17,6 +17,7 @@ You have access to:
 - Web access (search, fetch)
 - Messaging (message)
 - Background tasks (spawn)
+- Notion  (read, write, edit, list)
 
 ## Memory
 
