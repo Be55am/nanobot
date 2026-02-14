@@ -279,20 +279,67 @@ This file stores important information that should persist across sessions.
 
 
 def _make_provider(config):
-    """Create LiteLLMProvider from config. Exits if no API key found."""
+    """Create LiteLLMProvider from config with fallback support. Exits if no API key found."""
     from nanobot.providers.litellm_provider import LiteLLMProvider
+
+    # Get primary provider configuration
     p = config.get_provider()
     model = config.agents.defaults.model
+    provider_name = config.get_provider_name()
+
+    # Check if primary provider has API key (unless using bedrock)
     if not (p and p.api_key) and not model.startswith("bedrock/"):
         console.print("[red]Error: No API key configured.[/red]")
         console.print("Set one in ~/.nanobot/config.json under providers section")
         raise typer.Exit(1)
+
+    # Build fallback configurations if specified
+    fallback_list = getattr(config.agents.defaults, 'fallbacks', None) or []
+    fallbacks = []
+
+    if fallback_list:
+        console.print(f"[cyan]Configuring {len(fallback_list)} fallback provider(s)...[/cyan]")
+
+        for fb in fallback_list:
+            fb_provider_name = fb.get("provider")
+            if not fb_provider_name:
+                continue
+
+            # Get fallback provider config
+            fb_provider = getattr(config.providers, fb_provider_name, None)
+            if not fb_provider:
+                console.print(f"[yellow]⚠️  Skipping fallback '{fb_provider_name}': not found in config[/yellow]")
+                continue
+
+            if not fb_provider.api_key:
+                console.print(f"[yellow]⚠️  Skipping fallback '{fb_provider_name}': no API key[/yellow]")
+                continue
+
+            fallback_model = fb.get("model")
+            if not fallback_model:
+                console.print(f"[yellow]⚠️  Skipping fallback '{fb_provider_name}': no model specified[/yellow]")
+                continue
+
+            fallbacks.append({
+                "provider_name": fb_provider_name,
+                "model": fallback_model,
+                "api_key": fb_provider.api_key,
+                "api_base": fb_provider.api_base,
+                "extra_headers": fb_provider.extra_headers,
+            })
+
+            console.print(f"  [green]✓[/green] Fallback {len(fallbacks)}: {fb_provider_name} / {fallback_model}")
+
+    # Create provider with fallback support
     return LiteLLMProvider(
+        # Primary provider
         api_key=p.api_key if p else None,
         api_base=config.get_api_base(),
         default_model=model,
         extra_headers=p.extra_headers if p else None,
-        provider_name=config.get_provider_name(),
+        provider_name=provider_name,
+        # Fallback chain
+        fallbacks=fallbacks if fallbacks else None,
     )
 
 
