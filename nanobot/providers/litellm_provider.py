@@ -15,7 +15,7 @@ class LiteLLMProvider(LLMProvider):
     """
     LLM provider using LiteLLM for multi-provider support.
     
-    Supports OpenRouter, Anthropic, OpenAI, Gemini, and many other providers through
+    Supports OpenRouter, Anthropic, OpenAI, Gemini, MiniMax, and many other providers through
     a unified interface.  Provider-specific logic is driven by the registry
     (see providers/registry.py) — no if-elif chains needed here.
     """
@@ -122,6 +122,10 @@ class LiteLLMProvider(LLMProvider):
         """
         model = self._resolve_model(model or self.default_model)
         
+        # Clamp max_tokens to at least 1 — negative or zero values cause
+        # LiteLLM to reject the request with "max_tokens must be at least 1".
+        max_tokens = max(1, max_tokens)
+        
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": messages,
@@ -131,6 +135,10 @@ class LiteLLMProvider(LLMProvider):
         
         # Apply model-specific overrides (e.g. kimi-k2.5 temperature)
         self._apply_model_overrides(model, kwargs)
+        
+        # Pass api_key directly — more reliable than env vars alone
+        if self.api_key:
+            kwargs["api_key"] = self.api_key
         
         # Pass api_base for custom endpoints
         if self.api_base:

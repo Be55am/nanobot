@@ -1,7 +1,7 @@
 """Configuration schema using Pydantic."""
 
 from pathlib import Path
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from pydantic_settings import BaseSettings
 
 
@@ -9,6 +9,7 @@ class WhatsAppConfig(BaseModel):
     """WhatsApp channel configuration."""
     enabled: bool = False
     bridge_url: str = "ws://localhost:3001"
+    bridge_token: str = ""  # Shared token for bridge auth (optional, recommended)
     allow_from: list[str] = Field(default_factory=list)  # Allowed phone numbers
 
 
@@ -77,6 +78,42 @@ class EmailConfig(BaseModel):
     allow_from: list[str] = Field(default_factory=list)  # Allowed sender email addresses
 
 
+class MochatMentionConfig(BaseModel):
+    """Mochat mention behavior configuration."""
+    require_in_groups: bool = False
+
+
+class MochatGroupRule(BaseModel):
+    """Mochat per-group mention requirement."""
+    require_mention: bool = False
+
+
+class MochatConfig(BaseModel):
+    """Mochat channel configuration."""
+    enabled: bool = False
+    base_url: str = "https://mochat.io"
+    socket_url: str = ""
+    socket_path: str = "/socket.io"
+    socket_disable_msgpack: bool = False
+    socket_reconnect_delay_ms: int = 1000
+    socket_max_reconnect_delay_ms: int = 10000
+    socket_connect_timeout_ms: int = 10000
+    refresh_interval_ms: int = 30000
+    watch_timeout_ms: int = 25000
+    watch_limit: int = 100
+    retry_delay_ms: int = 500
+    max_retry_attempts: int = 0  # 0 means unlimited retries
+    claw_token: str = ""
+    agent_user_id: str = ""
+    sessions: list[str] = Field(default_factory=list)
+    panels: list[str] = Field(default_factory=list)
+    allow_from: list[str] = Field(default_factory=list)
+    mention: MochatMentionConfig = Field(default_factory=MochatMentionConfig)
+    groups: dict[str, MochatGroupRule] = Field(default_factory=dict)
+    reply_delay_mode: str = "non-mention"  # off | non-mention
+    reply_delay_ms: int = 120000
+
+
 class SlackDMConfig(BaseModel):
     """Slack DM policy configuration."""
     enabled: bool = True
@@ -111,6 +148,7 @@ class ChannelsConfig(BaseModel):
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
     discord: DiscordConfig = Field(default_factory=DiscordConfig)
     feishu: FeishuConfig = Field(default_factory=FeishuConfig)
+    mochat: MochatConfig = Field(default_factory=MochatConfig)
     dingtalk: DingTalkConfig = Field(default_factory=DingTalkConfig)
     email: EmailConfig = Field(default_factory=EmailConfig)
     slack: SlackConfig = Field(default_factory=SlackConfig)
@@ -124,6 +162,7 @@ class AgentDefaults(BaseModel):
     max_tokens: int = 8192
     temperature: float = 0.7
     max_tool_iterations: int = 20
+    memory_window: int = 50
 
 
 class AgentsConfig(BaseModel):
@@ -140,6 +179,7 @@ class ProviderConfig(BaseModel):
 
 class ProvidersConfig(BaseModel):
     """Configuration for LLM providers."""
+    custom: ProviderConfig = Field(default_factory=ProviderConfig)  # Any OpenAI-compatible endpoint
     anthropic: ProviderConfig = Field(default_factory=ProviderConfig)
     openai: ProviderConfig = Field(default_factory=ProviderConfig)
     openrouter: ProviderConfig = Field(default_factory=ProviderConfig)
@@ -150,6 +190,7 @@ class ProvidersConfig(BaseModel):
     vllm: ProviderConfig = Field(default_factory=ProviderConfig)
     gemini: ProviderConfig = Field(default_factory=ProviderConfig)
     moonshot: ProviderConfig = Field(default_factory=ProviderConfig)
+    minimax: ProviderConfig = Field(default_factory=ProviderConfig)
     aihubmix: ProviderConfig = Field(default_factory=ProviderConfig)  # AiHubMix API gateway
 
 
@@ -243,6 +284,7 @@ class Config(BaseSettings):
                 return spec.default_api_base
         return None
     
-    class Config:
-        env_prefix = "NANOBOT_"
-        env_nested_delimiter = "__"
+    model_config = ConfigDict(
+        env_prefix="NANOBOT_",
+        env_nested_delimiter="__"
+    )
