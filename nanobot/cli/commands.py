@@ -279,20 +279,87 @@ This file stores important information that should persist across sessions.
 
 
 def _make_provider(config):
-    """Create LiteLLMProvider from config. Exits if no API key found."""
+    """Create LLM provider from config. Uses fallback chain if agents.endpoints is set."""
     from nanobot.providers.litellm_provider import LiteLLMProvider
-    p = config.get_provider()
+    from nanobot.providers.fallback import FallbackProvider, _Endpoint
+    from nanobot.config.schema import AgentEndpoint
+
+    endpoints = getattr(config.agents, "endpoints", None) or []
+    if endpoints:
+        # Build fallback chain: one LiteLLMProvider per endpoint
+        chain = []
+        for ep in endpoints:
+            if not isinstance(ep, AgentEndpoint):
+                continue
+            if not ep.provider or not ep.model:
+                continue
+            p = config.get_provider_by_name(ep.provider)
+            if not (p and p.api_key):
+                console.print(f"[yellow]Warning: Skipping endpoint {ep.provider} (no API key).[/yellow]")
+                continue
+            api_base = config.get_api_base_by_name(ep.provider)
+            litellm = LiteLLMProvider(
+                api_key=p.api_key,
+                api_base=api_base,
+                default_model=ep.model,
+                extra_headers=p.extra_headers if p else None,
+                provider_name=ep.provider,
+            )
+            chain.append(_Endpoint(
+                provider=litellm,
+                provider_name=ep.provider,
+                model=ep.model,
+                temperature=ep.temperature,
+                max_tokens=ep.max_tokens,
+            ))
+        if not chain:
+            console.print("[red]Error: No valid endpoints in agents.endpoints (missing API keys?).[/red]")
+            raise typer.Exit(1)
+        return FallbackProvider(chain)
+
+    # Single-provider mode (defaults)
     model = config.agents.defaults.model
+    provider_name = getattr(config.agents.defaults, "provider", None) or config.get_provider_name(model)
+    if provider_name:
+        p = config.get_provider_by_name(provider_name) or config.get_provider(model)
+        api_base = config.get_api_base_by_name(provider_name) if config.get_provider_by_name(provider_name) else config.get_api_base(model)
+    else:
+        p = config.get_provider(model)
+        api_base = config.get_api_base(model)
     if not (p and p.api_key) and not model.startswith("bedrock/"):
         console.print("[red]Error: No API key configured.[/red]")
         console.print("Set one in ~/.nanobot/config.json under providers section")
         raise typer.Exit(1)
     return LiteLLMProvider(
         api_key=p.api_key if p else None,
-        api_base=config.get_api_base(),
+        api_base=api_base,
         default_model=model,
         extra_headers=p.extra_headers if p else None,
-        provider_name=config.get_provider_name(),
+        provider_name=provider_name,
+    )
+
+
+def _get_agent_params(config):
+    """Return (model, temperature, max_tokens, max_tool_iterations, memory_window) from config."""
+    defaults = config.agents.defaults
+    endpoints = getattr(config.agents, "endpoints", None) or []
+    if endpoints:
+        ep = endpoints[0]
+        from nanobot.config.schema import AgentEndpoint
+        if isinstance(ep, AgentEndpoint) and ep.provider and ep.model:
+            return (
+                ep.model,
+                ep.temperature,
+                ep.max_tokens,
+                ep.max_tool_iterations,
+                defaults.memory_window,
+            )
+    return (
+        defaults.model,
+        defaults.temperature,
+        defaults.max_tokens,
+        defaults.max_tool_iterations,
+        defaults.memory_window,
     )
 
 
@@ -326,6 +393,7 @@ def gateway(
     bus = MessageBus()
     provider = _make_provider(config)
     session_manager = SessionManager(config.workspace_path)
+    model, temperature, max_tokens, max_iterations, memory_window = _get_agent_params(config)
 
     # Create cron service first (callback set after agent creation)
     cron_store_path = get_data_dir() / "cron" / "jobs.json"
@@ -336,11 +404,11 @@ def gateway(
         bus=bus,
         provider=provider,
         workspace=config.workspace_path,
-        model=config.agents.defaults.model,
-        temperature=config.agents.defaults.temperature,
-        max_tokens=config.agents.defaults.max_tokens,
-        max_iterations=config.agents.defaults.max_tool_iterations,
-        memory_window=config.agents.defaults.memory_window,
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        max_iterations=max_iterations,
+        memory_window=memory_window,
         brave_api_key=config.tools.web.search.api_key or None,
         exec_config=config.tools.exec,
         cron_service=cron,
@@ -438,6 +506,7 @@ def agent(
 
     bus = MessageBus()
     provider = _make_provider(config)
+    model, temperature, max_tokens, max_iterations, memory_window = _get_agent_params(config)
 
     if logs:
         logger.enable("nanobot")
@@ -448,11 +517,11 @@ def agent(
         bus=bus,
         provider=provider,
         workspace=config.workspace_path,
-        model=config.agents.defaults.model,
-        temperature=config.agents.defaults.temperature,
-        max_tokens=config.agents.defaults.max_tokens,
-        max_iterations=config.agents.defaults.max_tool_iterations,
-        memory_window=config.agents.defaults.memory_window,
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        max_iterations=max_iterations,
+        memory_window=memory_window,
         brave_api_key=config.tools.web.search.api_key or None,
         exec_config=config.tools.exec,
         restrict_to_workspace=config.tools.restrict_to_workspace,

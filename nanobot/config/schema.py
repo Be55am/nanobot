@@ -163,11 +163,23 @@ class AgentDefaults(BaseModel):
     temperature: float = 0.7
     max_tool_iterations: int = 20
     memory_window: int = 50
+    provider: str = ""  # Optional: force provider by registry name (e.g. "vllm", "openrouter")
+
+
+class AgentEndpoint(BaseModel):
+    """One endpoint in the agent provider fallback chain (provider + model + params)."""
+    model_config = ConfigDict(populate_by_name=True)
+    provider: str = ""  # Registry name: vllm, openrouter, openai, etc.
+    model: str = ""
+    max_tokens: int = Field(8192, alias="maxTokens")
+    temperature: float = 0.7
+    max_tool_iterations: int = Field(20, alias="maxToolIterations")
 
 
 class AgentsConfig(BaseModel):
     """Agent configuration."""
     defaults: AgentDefaults = Field(default_factory=AgentDefaults)
+    endpoints: list[AgentEndpoint] = Field(default_factory=list)
 
 
 class ProviderConfig(BaseModel):
@@ -292,7 +304,27 @@ class Config(BaseSettings):
             if spec and spec.is_gateway and spec.default_api_base:
                 return spec.default_api_base
         return None
-    
+
+    def get_provider_by_name(self, name: str) -> "ProviderConfig | None":
+        """Get provider config by registry name (e.g. 'vllm', 'openrouter')."""
+        p = getattr(self.providers, name, None)
+        if p and p.api_key:
+            return p
+        return None
+
+    def get_api_base_by_name(self, name: str) -> str | None:
+        """Get API base URL for a provider by registry name."""
+        from nanobot.providers.registry import find_by_name
+        p = self.get_provider_by_name(name)
+        if not p:
+            return None
+        if p.api_base:
+            return p.api_base
+        spec = find_by_name(name)
+        if spec and spec.is_gateway and spec.default_api_base:
+            return spec.default_api_base
+        return None
+
     model_config = ConfigDict(
         env_prefix="NANOBOT_",
         env_nested_delimiter="__"
