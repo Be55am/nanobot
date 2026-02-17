@@ -56,6 +56,14 @@ class FallbackProvider(LLMProvider):
         last_response: LLMResponse | None = None
         for i, ep in enumerate(self._endpoints):
             try:
+                # Log which provider/model is being used for this call
+                logger.info(
+                    "LLM call: provider={} model={} max_tokens={} temperature={}",
+                    ep.provider_name,
+                    ep.model,
+                    ep.max_tokens,
+                    ep.temperature,
+                )
                 response = await ep.provider.chat(
                     messages=messages,
                     tools=tools,

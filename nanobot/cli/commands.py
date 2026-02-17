@@ -283,6 +283,7 @@ def _make_provider(config):
     from nanobot.providers.litellm_provider import LiteLLMProvider
     from nanobot.providers.fallback import FallbackProvider, _Endpoint
     from nanobot.config.schema import AgentEndpoint
+    from loguru import logger
 
     endpoints = getattr(config.agents, "endpoints", None) or []
     if endpoints:
@@ -315,6 +316,9 @@ def _make_provider(config):
         if not chain:
             console.print("[red]Error: No valid endpoints in agents.endpoints (missing API keys?).[/red]")
             raise typer.Exit(1)
+        # Log the configured fallback chain once at startup
+        chain_desc = " -> ".join(f"{e.provider_name}:{e.model}" for e in chain)
+        logger.info("LLM endpoints chain: {}", chain_desc)
         return FallbackProvider(chain)
 
     # Single-provider mode (defaults)
